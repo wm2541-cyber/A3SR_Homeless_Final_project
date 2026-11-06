@@ -162,3 +162,52 @@ All five extended analyses are fully implemented, commented, and visualized in [
   1. **Elevated Missed-Risk Rate (FPR) for Women ($26.51\%$ vs. $21.76\%$ for Men):** Because female clients have a higher baseline completion rate ($69.26\%$ vs. $63.70\%$), the model over-predicts success for women, failing to flag $26.51\%$ of women who ultimately drop out (`ROC-AUC` is also lower for women at $0.8779$ vs. $0.8999$ for men).
   2. **High False Positive Rate Among Clients Answering Chemical Addiction Questions ($30.00\%$–$30.56\%$):** Clients with recorded chemical addiction assessments experience a $\sim 30\%$ false positive rate, meaning nearly one-third of unsuccessful contracts in this vulnerable group are misclassified as low-risk.
   3. **Higher False Negative Rate (FNR) for Youth ($14.29\%$):** Young homeless clients (`<35` years) face the highest rate of unjust pessimism ($\text{FNR} = 14.29\%$), where capable youth who actually succeed are misclassified as failures. In practice, predictive scores must **never** be used to ration or deny shelter/rehabilitation contracts, but rather to trigger proactive caseworker check-ins.
+
+---
+
+## Key Takeaways: How the Extended Analyses Fundamentally Change the Paper’s Conclusions
+
+The central finding of our critical re-examination is that **the original paper presents an artificially inflated and methodologically fragile baseline (headline 83.39% accuracy, 0.8713 F1)**, while our extended analyses reveal the **true, sober reality of algorithmic prediction in real-world homeless rehabilitation (cold-start accuracy of 66.72%–69.71%, 0.7632–0.7902 F1)**.
+
+Below is a structured synthesis of the **six fundamental differences** between the paper’s reproduced baseline and our extended empirical findings:
+
+### 1. The Core Comparison Matrix: Baseline Illusion vs. Extended Empirical Reality
+
+| Methodological Dimension | Original Paper Baseline (Reproduced) | Extended Analyses (Deliverable C) | Critical Difference & Social Impact Takeaway |
+| :--- | :--- | :--- | :--- |
+| **A. Repeat-Client Generalization** | **83.39% Accuracy / 0.8713 F1** (XGBoost OS)<br>Evaluated on row-split validation set | **67.85% Accuracy / 0.7694 F1** (XGBoost OS)<br>**69.71% Accuracy / 0.7902 F1** (Random Forest OS)<br>Evaluated via `GroupShuffleSplit` on `client_id` | **A massive 15.5% accuracy collapse.** In the paper’s split, **73.54% of validation contracts belong to repeat clients already seen in training**. Tree models achieve 88.87% on seen clients vs. only 68.15% on brand-new clients—proving the baseline is memorizing static individual client traits rather than generalizable contract mechanisms. Random Forest actually overtakes XGBoost on unseen clients. |
+| **B. Target Cohort Inclusion** | **64.88% Base Success Rate**<br>Artificially curated subset ($N=6,349$)<br>Omits status `4` and `6` | **50.70% Base Success Rate**<br>Full resolved cohort ($N=8,124$)<br>XGBoost F1 drops from 0.8713 to **0.7933**<br>Random Forest F1 drops from 0.8584 to **0.7637** | The authors discarded 1,775 resolved contracts (44.3% of all non-successful outcomes) attributed to external or administrative obstacles. Restoring these messy, real-world failures reveals that actual contract success is essentially a coin-toss (50.7%), and model discriminative power drops by 8–9 F1 points. |
+| **C. Temporal & Causal Feasibility** | Uses **96 features**, including post-hoc case notes (`comments_absence`) | Uses **94 ex-ante features**, strictly dropping `comments_absence` & `comments_disturbance` | Because client absence defines 81.4% of paper failures, conditioning on social worker notes documenting absence constitutes target leakage. Removing post-hoc notes yields cold-start intake accuracy of **66.72%** (XGBoost) and **68.34%** (Random Forest). |
+| **D. Preprocessing Leakage Audit** | **Leaked Pipeline** (`fillna` and `StandardScaler` fit on full $X_t$ before split) | **Strict Leak-Free Pipeline** (imputer and scaler fit strictly on $X_{train}$) | Metric shifts are negligible ($\\pm 0.001$ to $0.002$ F1), successfully **ruling out data transformation leakage** as the cause of high performance and isolating repeat-client memorization and cohort filtering as the true drivers. |
+| **E. Algorithmic Fairness & Subgroup Equity** | Reports only a **single monolithic aggregate accuracy (83.39%)**; assumes uniform equity across groups | Disaggregates performance across **Gender, Age, Housing, and Chemical Addiction**: | The aggregate score masks dangerous error disparities: |
+| — *Gender Equity* | Unreported | **FPR = 26.51% for Women vs. 21.76% for Men** (ROC-AUC 0.8779 vs. 0.8999) | The model is over-optimistic for female clients (due to higher baseline success, 69.3% vs. 63.7%), failing to flag over one-fourth of women who drop out. |
+| — *Chemical Addiction Disclosure* | Unreported | **FPR = 30.00%–30.56%** for clients with addiction interview records | Nearly one-third of non-completed contracts among this highly vulnerable group are misclassified as low-risk, risking systemic under-support. |
+| — *Age Disparity* | Unreported | **FNR = 14.29% for Youth (<35 years)** vs. 13.0% for middle-aged | Young clients suffer the highest rate of unjust pessimism (capable youth predicted to fail), showing why predictive models must never gatekeep access. |
+| **F. Metric Parameter Inversion Bug** | Printed Precision: `0.8665`<br>Printed Recall: `0.8761` | Standard Precision: **`0.8761`**<br>Standard Recall: **`0.8665`** | Author passed `(y_pred, y_true)` instead of `(y_true, y_pred)` across every cell, inverting Precision and Recall throughout the original paper code. |
+
+---
+
+### 2. In-Depth Narrative Breakdown: What This Means for Social Impact & Practice
+
+#### Insight 1: Deconstructing the "83.4% Accuracy" Myth — Memorization vs. Learning
+In social service settings, predictive tools are intended to assist caseworkers when a **new, unfamiliar client** enters a shelter. The original paper claimed an impressive $83.4\%$ accuracy, giving the false impression that machine learning can reliably forecast rehabilitation outcomes at intake. 
+
+However, Extension 2 reveals that this performance is largely an artifact of **repeat-client leakage**:
+* A client who signs 4 consecutive contracts has their demographic profile (birthplace, age, disability status, penal history, family background) repeated across 4 rows.
+* When rows are split randomly, the model encounters this exact same individual in both training and testing.
+* On the $73.54\%$ of validation contracts belonging to "seen" individuals, XGBoost achieves **$88.87\%$ accuracy ($	ext{F1} = 0.9105$)**. But on the $26.46\%$ of contracts signed by genuinely new, unseen individuals, performance collapses to **$68.15\%$ accuracy ($	ext{F1} = 0.7757$)**—a **$20.71\%$ memorization gap**.
+* When trained under a strict `GroupShuffleSplit`, **Random Forest ($69.71\%$ Acc, $0.7902$ F1) outperforms XGBoost ($67.85\%$ Acc, $0.7694$ F1)**, demonstrating that simpler ensembles with aggressive bootstrap bagging generalize better to new individuals than heavily boosted gradient trees.
+
+#### Insight 2: The Fallacy of the Curated Sample — Homelessness Rehabilitation is Messy
+The original paper created a curated cohort where nearly two-thirds ($64.88\%$) of contracts succeeded. They achieved this by quietly removing 1,775 contracts with status `4` (`Partial - other`) and `6` (`Fail - other`).
+
+In reality, homelessness rehabilitation takes place in an unpredictable social environment: clients are hospitalized, shelters run out of beds, bureaucratic agencies delay passport issuance, or external employers default on wages. When these $1,775$ non-voluntary failures are re-integrated into the analysis (Extension 4):
+* The true contract completion rate drops to **$50.70\%$** (virtually a coin flip).
+* Model performance drops across every single architecture, with XGBoost F1 falling from **$0.8713$ to $0.7933$** and Random Forest F1 dropping from **$0.8584$ to $0.7637$**.
+* This proves that the paper’s high accuracy was dependent on filtering out the most challenging, realistic edge cases faced by social workers.
+
+#### Insight 3: The Ethical Imperative — Models for Support Allocation, Never for Gatekeeping
+Extension 5 delivers the most critical takeaway for policy and practice:
+1. **Unjust Pessimism Against Youth ($14.29\%$ FNR):** If an algorithm were used to decide which clients receive scarce transitional housing slots, young homeless clients (`<35` years old) would be disproportionately harmed—$14.29\%$ of young people who would have successfully completed their contract would be denied services due to algorithmic pessimism.
+2. **False Security for Women & Chemical Addiction Clients ($\sim 26\%–30\%$ FPR):** Conversely, women and individuals dealing with substance dependency experience high false positive rates. A caseworker relying on algorithmic risk scores might assume these clients are "safe" and withdraw intensive check-ins, allowing them to quietly slip through the cracks.
+3. **Policy Conclusion:** Risk scores should **never be used as a gatekeeping mechanism or hurdle to service access**. Instead, they should function exclusively as an **internal caseworker decision-support radar**—directing additional case conferences, legal advocacy, and material aid to contracts flagged as fragile.
